@@ -57,7 +57,7 @@ router.get('/batch', async (req, res) => {
     });
   };
   midArr.forEach((mid) => {
-    request(`http://127.0.0.1:3300/song?songmid=${mid}`)
+    request(`http://127.0.0.1:${global.PORT}/song?songmid=${mid}`)
       .then((res) => {
         if (res.result === 100) {
           resultObj[mid] = res.data;
@@ -73,7 +73,7 @@ router.get('/batch', async (req, res) => {
 
 router.get('/find', async (req, res) => {
   const { key } = req.query;
-  const obj = await request(`http://127.0.0.1:3300/search?key=${key}&pageNo=1`);
+  const obj = await request(`http://127.0.0.1:${global.PORT}/search?key=${key}&pageNo=1`);
   const song = obj.data.list[0];
   if (!song) {
     res.send({
@@ -85,7 +85,7 @@ router.get('/find', async (req, res) => {
       result: 100,
       data: song,
     };
-    const urlResult = await request(`http://127.0.0.1:3300/song/urls?id=${song.songmid}`);
+    const urlResult = await request(`http://127.0.0.1:${global.PORT}/song/urls?id=${song.songmid}`);
     result.data.url = urlResult.data[song.songmid];
     res.send(result);
   }
@@ -98,7 +98,7 @@ router.post('/finds', async (req, res) => {
   let count = 0;
   for (let i = 0; i < keys.length; i++) {
     request({
-      url: `http://127.0.0.1:3300/song/find?key=${encodeURIComponent(data[keys[i]])}`,
+      url: `http://127.0.0.1:${global.PORT}/song/find?key=${encodeURIComponent(data[keys[i]])}`,
     }).then((result) => {
       data[keys[i]] = result.data || {};
       count += 1;
@@ -127,12 +127,24 @@ router.post('/finds', async (req, res) => {
 // 批量获取歌曲 url
 const getUrls = async (req, res) => {
   const obj = { ...req.query, ...req.body };
+  let uin = global.userCookie.uin;
+  const { cache } = global;
+
+  if (Number(obj.ownCookie)) {
+    uin = req.cookies.uin || uin;
+  }
 
   const { id } = obj;
   const idArr = id.split(',');
   let count = 0;
   const idStr = idArr.map((id) => `"${id}"`).join(',');
-  let url = `https://u.y.qq.com/cgi-bin/musicu.fcg?-=getplaysongvkey2682247447678878&g_tk=5381&loginUin=956581739&hostUin=0&format=json&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0&data=%7B"req_0"%3A%7B"module"%3A"vkey.GetVkeyServer"%2C"method"%3A"CgiGetVkey"%2C"param"%3A%7B"guid"%3A"2796982635"%2C"songmid"%3A%5B${idStr}%5D%2C"songtype"%3A%5B0%5D%2C"uin"%3A"956581739"%2C"loginflag"%3A1%2C"platform"%3A"20"%7D%7D%2C"comm"%3A%7B"uin"%3A956581739%2C"format"%3A"json"%2C"ct"%3A24%2C"cv"%3A0%7D%7D`
+
+  let cacheKey = `song_url_${idStr}`;
+  let cacheData = cache.get(cacheKey)
+  if (cacheData) {
+    return res.send(cacheData);
+  }
+  let url = `https://u.y.qq.com/cgi-bin/musicu.fcg?-=getplaysongvkey2682247447678878&g_tk=5381&loginUin=${uin}&hostUin=0&format=json&inCharset=utf8&outCharset=utf-8&notice=0&platform=yqq.json&needNewCode=0&data=%7B"req_0"%3A%7B"module"%3A"vkey.GetVkeyServer"%2C"method"%3A"CgiGetVkey"%2C"param"%3A%7B"guid"%3A"2796982635"%2C"songmid"%3A%5B${idStr}%5D%2C"songtype"%3A%5B0%5D%2C"uin"%3A"${uin}"%2C"loginflag"%3A1%2C"platform"%3A"20"%7D%7D%2C"comm"%3A%7B"uin"%3A${uin}%2C"format"%3A"json"%2C"ct"%3A24%2C"cv"%3A0%7D%7D`
   let isOk = false;
   let result = null;
 
@@ -149,7 +161,7 @@ const getUrls = async (req, res) => {
   }
 
   // const domain = result.req_0.data.sip[0];
-  const domain = 'http://124.89.197.18/amobile.music.tc.qq.com/';
+  const domain = 'http://122.226.161.16/amobile.music.tc.qq.com/';
 
   const data = {};
   result.req_0.data.midurlinfo.forEach((item) => {
@@ -158,17 +170,24 @@ const getUrls = async (req, res) => {
     }
   });
 
-  res.send({
+  cacheData = {
     data,
     result: 100,
-  });
+  }
+  res.send(cacheData);
+  cache.set(cacheKey, cacheData);
 };
 
-// 批量获取歌曲 url 新版获取 url 的方法
+// 新版获取 url 的方法
 const getUrlNew = async (req, res) => {
   const obj = { ...req.query, ...req.body };
+  let uin = global.userCookie.uin;
+  const { cache } = global;
+  if (Number(obj.ownCookie)) {
+    uin = req.cookies.uin || uin;
+  }
 
-  const { id, type = '128', mediaId = id } = obj;
+  const { id, type = '128', mediaId = id, isRedirect = '0' } = obj;
   const typeMap = {
     m4a: {
       s: 'C400',
@@ -200,30 +219,74 @@ const getUrlNew = async (req, res) => {
       errMsg: 'type 传错了，看看文档去',
     })
   }
-  const file = `${typeObj.s}${mediaId}${typeObj.e}`;
+  const file = `${typeObj.s}${id}${mediaId}${typeObj.e}`;
   const guid = (Math.random() * 10000000).toFixed(0);
 
-  const url = `http://c.y.qq.com/base/fcgi-bin/fcg_music_express_mobile3.fcg?g_tk=1722049047&loginUin=956581739&needNewCode=0&cid=205361747&uin=323&songmid=${id}&filename=${file}&guid=${guid}`;
-  const result = await request(url);
-  let vkey = '';
-
-  if (result.data && result.data.items && result.data.items[0]) {
-    vkey = result.data.items[0].vkey;
-    if (vkey.indexOf(' ') > -1) {
-      vkey = '';
+  let purl = '';
+  let count = 0;
+  let cacheKey = `song_url_${file}`;
+  let cacheData = cache.get(cacheKey)
+  if (cacheData) {
+    return res.send(cacheData);
+  }
+  while (!purl && count < 10) {
+    count += 1;
+    const result = await request({
+      url: 'https://u.y.qq.com/cgi-bin/musicu.fcg',
+      data: {
+        '-': 'getplaysongvkey',
+        'g_tk': 5381,
+        loginUin: uin,
+        hostUin: 0,
+        format: 'json',
+        inCharset: 'utf8',
+        outCharset: 'utf-8¬ice=0',
+        platform: 'yqq.json',
+        needNewCode: 0,
+        data: JSON.stringify({
+          "req_0": {
+            "module": "vkey.GetVkeyServer",
+            "method": "CgiGetVkey",
+            "param": {
+              "filename": [ file ],
+              "guid": guid,
+              "songmid": [ id ],
+              "songtype": [ 0 ],
+              "uin": uin,
+              "loginflag": 1,
+              "platform": "20",
+            }
+          },
+          "comm": {
+            "uin": uin,
+            "format": "json",
+            "ct": 19,
+            "cv": 0
+          }
+        })
+      }
+    });
+    if (result.req_0 && result.req_0.data && result.req_0.data.midurlinfo) {
+      purl = result.req_0.data.midurlinfo[0].purl;
     }
   }
-  if (!vkey) {
+  if (!purl) {
     return res.send({
       result: 400,
       errMsg: '获取播放链接出错',
     })
   }
 
-  res.send({
-    data: `http://124.89.197.18/amobile.music.tc.qq.com/${file}?guid=${guid}&vkey=${vkey}&uin=323&fromtag=66`,
+  if (Number(isRedirect)) {
+    return res.redirect(`http://122.226.161.16/amobile.music.tc.qq.com/${purl}`);
+  }
+
+  cacheData = {
+    data: `http://122.226.161.16/amobile.music.tc.qq.com/${purl}`,
     result: 100,
-  });
+  }
+  res.send(cacheData);
+  cache.set(cacheKey, cacheData);
 };
 
 router.get('/urls', getUrls);
@@ -232,7 +295,7 @@ router.post('/urls', getUrls);
 
 router.get('/url', getUrlNew);
 
-router.get('/url', getUrlNew);
+router.post('/url', getUrlNew);
 
 // 相似歌曲
 router.get('/similar', async (req, res) => {

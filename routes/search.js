@@ -4,6 +4,7 @@ const router = express.Router();
 
 // 搜索
 router.get('/', async (req, res) => {
+  const { cache } = global;
   let {
     pageNo = 1,
     pageSize = 20,
@@ -20,8 +21,14 @@ router.get('/', async (req, res) => {
     });
   }
 
+  const cacheKey = `search_${key}_${pageNo}_${pageSize}_${t}`
+  const cacheData = cache.get(cacheKey);
+  if (cacheData) {
+    return res.send(cacheData);
+  }
   const url = {
-    2: 'http://c.y.qq.com/soso/fcgi-bin/client_music_search_songlist',
+    0: 'https://c.y.qq.com/soso/fcgi-bin/search_for_qq_cp',
+    2: `https://c.y.qq.com/soso/fcgi-bin/client_music_search_songlist?remoteplace=txt.yqq.playlist&page_no=${pageNo - 1}&num_per_page=${pageSize}&query=${key}`,
     // 3: 'http://c.y.qq.com/soso/fcgi-bin/client_search_user',
   }[t] || 'http://c.y.qq.com/soso/fcgi-bin/client_search_cp';
 
@@ -47,6 +54,7 @@ router.get('/', async (req, res) => {
     p: pageNo, // 第几页
     w: key, // 搜索关键词
     cr: 1, // 不知道这个参数什么意思，但是加上这个参数你会对搜索结果更满意的
+    g_tk: 5381,
     t,
   };
 
@@ -96,7 +104,8 @@ router.get('/', async (req, res) => {
       total = totalnum;
       break;
   }
-  res.send({
+
+  const resData = {
     result: 100,
     data: {
       list,
@@ -109,7 +118,9 @@ router.get('/', async (req, res) => {
     },
     // header: req.header(),
     // req: JSON.parse(JSON.stringify(req)),
-  });
+  }
+  cache.set(cacheKey, resData, 120);
+  res.send(resData);
 });
 
 // 热搜词
@@ -125,6 +136,25 @@ router.get('/hot', async (req, res) => {
     result: 100,
     data: result.data.hotkey,
   });
+});
+
+// 快速搜索
+router.get('/quick', async (req, res) => {
+  const { raw, key } = req.query;
+  if (!key) {
+    return res.send({
+      result: 500,
+      errMsg: 'key ?'
+    })
+  }
+  const result = await request(`https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg?key=${key}&g_tk=5381`);
+  if (Number(raw)) {
+    return res.send(result);
+  }
+  return res.send({
+    result: 100,
+    data: result.data,
+  })
 });
 
 module.exports = router;

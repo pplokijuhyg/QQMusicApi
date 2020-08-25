@@ -7,6 +7,8 @@
 
 对于所有处理过的返回数据，都会包含 `result`，`100` 表示成功，`500` 表示穿参错误，`400` 为 node 捕获的未知异常，`301` 表示缺少用户登陆的 cookie
 
+关于如何在服务器上存储 cookie，可以查看接口 [设置用户Cookie](#设置用户Cookie)
+
 灵感来源：[Binaryify/NeteaseCloudMusicApi](https://github.com/Binaryify/NeteaseCloudMusicApi)
 
 ## Start
@@ -19,7 +21,7 @@ $ npm install
 $ npm start
 ```
 
-项目默认端口为 3300
+项目默认端口为 3300，默认qq号 1234567 (设置Cookie)，可以通过修改 `bin/config.js` 或设置启动参数 `PORT=3400 QQ=7654321 npm start`
 
 **在线接口测试网址：[http://api.qq.jsososo.com](http://api.qq.jsososo.com)**
 
@@ -30,6 +32,8 @@ $ npm start
 !> QQ音乐登陆的这个问题还是难绕过去，目前还是需要登陆并手动获取 [https://y.qq.com](https://y.qq.com) 的 `cookie`，注入网站或node，
 如果又什么更好的解决办法，欢迎大家提 pr 给我
 
+!> 另，可以通过 [qqmusic-cookie-porter](https://github.com/jsososo/qqmusic-cookie-porter) 这个 chrome 插件半自动获取 cookie
+
 !> 本项目仅供学习使用，请尊重版权，请勿利用此项目从事商业行为!
 本项目仅供学习使用，请尊重版权，请勿利用此项目从事商业行为!
 本项目仅供学习使用，请尊重版权，请勿利用此项目从事商业行为!
@@ -37,8 +41,54 @@ $ npm start
 !> 接口仅作为测试或者方便听歌使用，发现有人使用其他服务大量的调用接口导致服务经常性挂掉重启，所以加入了ip检测和黑白名单机制，
 想用的童鞋请自行clone走项目启动，我也没钱升级我的服务器了！！
 
+## 常见问题
+
+1、为什么无法获取音乐链接等？
+
+请确保已正确添加绿钻账号 Cookie 信息，具体操作可以查看 [设置用户cookie](#设置用户cookie)，检测是否设置成功可以查看 [查看当前cookie](#查看当前cookie)
+
+2、为什么返回了 `自己起一个 node 服务 这么难？？?` 或 被加入了黑名单 ?
+
+第一个，服务默认禁止了一些明显来源于爬虫的接口，可以将 `util/dataStatistics.js` 中相关代码注释重启，
+如果短时大量请求会被拉入黑名单，可以通过移除黑名单、加入白名单，或者干脆在 `app.js` 里注释 `dataHandle` 相关代码
+
 
 ## 更新记录
+20-08-03：🕶️ 部分接口增加缓存策略
+
+20-07-14 修改了因图标导致的无法部署
+
+20-06-24：🍑 获取用户创建歌单接口出错
+
+20-05-21：🍇 新增推荐 banner、url 支持重定向、配置化启动
+
+20-04-23：🎢 修复高品音质获取失败问题
+
+20-04-18：📖 写死的参数替换
+
+20-04-14：🚎 日推
+
+20-04-07：🍰 接口记录问题
+
+20-03-30：🌸 收藏歌单操作，获取用户收藏的歌单/专辑
+
+20-03-22：🍃 去除 cookie 中 uin 的其他字母
+
+20-02-15：👍 新增评论操作相关接口
+
+20-02-01：🥤 新增多个歌单操作相关接口
+
+20-01-31：🐑 配合 chrome 插件自动获取存储 cookie
+
+20-01-30：🍲 增加快速搜索接口、歌单、专辑、歌单、mv的评论获取
+
+20-01-19：😢 [issue#9](https://github.com/jsososo/QQMusicApi/issues/9)
+
+20-01-17：👑 更新歌曲链接的域名ip
+
+20-01-09：🦈 反馈
+
+20-01-07：🔫 歌单搜索接口修改
 
 19-12-23：🦑 排行榜相关接口优化、新增相似歌曲、相关歌单、相关mv
 
@@ -177,6 +227,8 @@ const url = `${domain}${s}${strMediaMid}${e}?guid=${guid}&vkey=${vkey}&fromtag=8
 `mediaId`: 这个字段为其他接口中返回的 strMediaId 字段，可不传，不传默认同 songmid，但是部分歌曲不传可能会出现能获取到链接，但实际404，
 所以有条件的大家都传吧
 
+`isRedirect`: 默认 0，非 0 时直接重定向到播放链接
+
 这个接口跟上个接口一样，也是依赖服务器的 Cookie 信息的，不支持批量获取，不一定是全部的歌曲都有无损、高品的，
 要注意结合 size320，sizeape，sizeflac 等参数先判断下是否有播放链接
 
@@ -184,6 +236,7 @@ const url = `${domain}${s}${strMediaMid}${e}?guid=${guid}&vkey=${vkey}&fromtag=8
 
 ### 搜索
 
+#### 搜索
 接口：`/search`
 
 参数：
@@ -198,7 +251,7 @@ const url = `${domain}${s}${strMediaMid}${e}?guid=${guid}&vkey=${vkey}&fromtag=8
 
 示例：[/search?key=周杰伦](http://api.qq.jsososo.com/search?key=周杰伦)
 
-### 获取热搜词
+#### 获取热搜词
 
 接口：`/search/hot`
 
@@ -222,6 +275,16 @@ const url = `${domain}${s}${strMediaMid}${e}?guid=${guid}&vkey=${vkey}&fromtag=8
   ]
 }
 ```
+
+#### 快速搜索
+
+接口: `/quick`
+
+`key`: 关键词 必填
+
+快速给出少量符合条件的歌曲、mv、专辑、歌手
+
+示例：[/search/quick?key=周杰伦](http://api.qq.jsososo.com/search/quick?key=周杰伦)
 
 ### 查找音乐
 
@@ -277,6 +340,25 @@ anxios({
 
 ### 用户信息
 
+#### 设置用户Cookie
+
+接口：`/user/setCookie`
+
+参数：
+
+`data`: 字符串，cookie 信息，格式如下 `aaa=bbb; ccc=ddd; ....`
+
+该方法仅支持 post 请求，`content-type` 选择 `application/json`，同时，当且仅当传入的 cookie 为写配置的 QQ 号（启动参数 或 `bin/config.js`）时才会
+被作为默认的公用 cookie 存储使用，各位在搭建自己的服务时记得修改这里的信。参考如下 ![设置cookie](http://static.jsososo.com/200521/140442/bd3dd265f2da8be02429436592876b5b.png)
+
+#### 查看当前Cookie
+
+接口 `/user/cookie`
+
+无需参数，共返回两个字段 `cookie` 为当前网站下的 cookie，`userCookie` 为服务器公用账号 cookie。
+
+#### 用户主页信息
+
 !> 这个接口是需要登陆 cookie 才能获取的，不然会返回 301，所以如果有误需要考虑一下可能是 cookie 过期
 
 接口：`/user/detail`
@@ -288,6 +370,46 @@ anxios({
 返回中 `mymusic` 为喜欢的音乐，`mydiss` 为用户创建的歌单，需要注意的是，喜欢的音乐中的歌单id为 `id`，歌单中的歌单id为 `dissid`
 
 示例：[/user/detail?id=123456](http://api.qq.jsososo.com/user/detail?id=123456)
+
+#### 用户创建的歌单
+
+接口：`/user/songlist`
+
+参数：
+
+`id`: qq号 必填
+
+这个接口比上一个接口更纯粹，只获取创建的歌单，且数据结构更简单，非必须登陆 Cookie，但如果用户未公开主页时，只有本人的 Cookie 才能获取数据
+
+示例：[/user/songlist?id=123456](http://api.qq.jsososo.com/user/songlist?id=123456)
+
+#### 用户收藏的歌单
+
+接口：`/user/collect/songlist`
+
+参数：
+
+`id`: qq号，必填，默认取 cookie 中 `uin`
+
+`pageNo`: 默认 1
+
+`pageSize`: 默认 20
+
+示例：[/user/collect/songlist?id=123456](http://api.qq.jsososo.com/user/collect/songlist?id=123456)
+
+#### 用户收藏的专辑
+
+接口：`/user/collect/album`
+
+参数：
+
+`id`: qq号，必填，默认取 cookie 中 `uin`
+
+`pageNo`: 默认 1
+
+`pageSize`: 默认 20
+
+示例：[/user/collect/album?id=123456](http://api.qq.jsososo.com/user/collect/album?id=123456)
 
 ### 歌单
 
@@ -326,13 +448,87 @@ anxios({
 
 参数
 
-`num`: 默认为 20，返回数量
+`pageSize`: 默认为 20
+
+`pageNo`: 默认为1
 
 `sort`: 默认是 5，// 5: 推荐，2: 最新，其他数字的排列值最后都会返回推荐
 
 `category`: 分类 id，默认 10000000 （全部），其他值从上面的分类接口获取
 
 示例：[/songlist/list](http://api.qq.jsososo.com/songlist/list)
+
+#### 4、歌曲id、mid的哈希表
+
+!> 这个接口强制使用浏览器传来的用户 Cookie 信息
+
+接口：`/songlist/map`
+
+参数：
+
+`dirid`: 默认 201 我喜欢的歌单
+
+这个接口只能获取用户自己创建的歌单且只会返回歌曲的 id 和 mid 的哈希表，不包含其他数据
+
+#### 5、添加歌曲到歌单
+
+!> 这个接口强制使用浏览器传来的用户 Cookie 信息
+
+接口：`/songlist/add`
+
+参数：
+
+`mid`: 歌曲 mid 必填，多个用 , 分割
+
+`dirid`: 必填
+
+#### 6、从歌单中移除歌曲
+
+!> 这个接口强制使用浏览器传来的用户 Cookie 信息
+
+接口：`/songlist/remove`
+
+参数：
+
+`id`: 歌曲 id 必填，多个用 , 分割
+
+`dirid`: 必填
+
+与上一个添加接口不同，移除需要 `id` 不是 `mid`
+
+#### 7、新建歌单
+
+!> 这个接口强制使用浏览器传来的用户 Cookie 信息
+
+接口：`/songlist/create`
+
+参数：
+
+`name`: 歌单名，不能为空
+
+如果歌单名重复，也会报错
+
+#### 8、删除歌单
+
+!> 这个接口强制使用浏览器传来的用户 Cookie 信息
+
+接口：`/songlist/delete`
+
+参数：
+
+`dirid`: 必填
+
+#### 9、收藏/取消收藏 歌单
+
+!> 这个接口强制使用浏览器传来的用户 Cookie 信息
+
+接口：`/songlist/collect`
+
+参数：
+
+`id`: 歌单id 必填
+
+`op`: 必填 1 收藏；2 取消收藏
 
 ### 歌曲信息
 
@@ -435,6 +631,20 @@ anxios({
 `pageSize`: 每页返回数量，默认为 20
 
 示例：[/recommend/playlist](http://api.qq.jsososo.com/recommend/playlist)
+
+#### 3、日推
+
+接口：`/recommend/daily`
+
+这个接口无需参数，强制使用传进来的 Cookie，返回日推歌单信息
+
+#### 4、轮播图Banner
+
+接口：`/recommend/banner`
+
+这个接口无需参数，目前仅已知会返回专辑推荐，但是只能获取 `albumid`，非 `albummid`
+
+示例：[/recommend/banner](http://api.qq.jsososo.com/recommend/banner)
 
 ### 最新推荐
 
@@ -592,13 +802,15 @@ ps: 官方的接口其实不是这几个type，但是为了考虑与下面的新
 
 示例：[/album/songs?albummid=002MAeob3zLXwZ](http://api.qq.jsososo.com/album/songs?albummid=002MAeob3zLXwZ)
 
-### 获取评论
+### 评论
+
+#### 1、获取评论
 
 接口：`/comment`
 
 参数：
 
-`id`: singid 必填
+`id`: singid, albumid, tid, topid, vid  必填
 
 `pageNo`: 默认 1
 
@@ -606,9 +818,55 @@ ps: 官方的接口其实不是这几个type，但是为了考虑与下面的新
 
 `type`: 默认 0  // 0：获取最新评论，1：获取热评
 
+`biztype`: 获取评论类型 1: 歌曲 2: 专辑 3: 歌单 4: 排行榜 5: mv
+
 当 `pageNo` 为 1 且 `type` 为 0 时，会返回15条热评 `hot_comment`
 
+返回结果说明：`ispraise` 表示这条评论是否被赞过，1: 是，0: 否；`enable_delete` 表示这条评论是否能被删除，1: 是，0: 否
+
+上述的判断以 cookie 中的 `uin` 账号为准
+
 示例：[/comment?id=97773](http://api.qq.jsososo.com/comment?id=97773)
+
+#### 2、发送评论
+
+接口：`/comment/send`
+
+类型：仅支持 post
+
+该接口需要用户登陆 cookie
+
+参数：
+
+`id`: singid, albumid, tid, topid, vid  必填
+
+`biztype`: 发送评论类型 1: 歌曲 2: 专辑 3: 歌单 4: 排行榜 5: mv
+
+`content`: 评论内容，必填，不超过300字
+
+#### 3、删除评论
+
+接口：`/comment/del`
+
+该接口需要用户登陆 cookie
+
+参数：
+
+`id`: commentid  必填
+
+只要登陆情况下，一般这个接口返回的都是操作成功，不管 `id` 是否存真实在（是鹅厂这样返回的！）
+
+#### 4、点赞评论
+
+接口：`/comment/like`
+
+该接口需要用户登陆 cookie
+
+参数：
+
+`id`: commentid  必填
+
+`type`: 1：点赞，2：取消赞，默认 1
 
 ### 电台
 

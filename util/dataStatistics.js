@@ -22,7 +22,7 @@ class DataStatistics {
         this.blackList = res;
       }, (err) => {
         this.blackList = {};
-        jsonFile.writeFile('data/whiteList.json', {});
+        jsonFile.writeFile('data/blackList.json', {});
       });
 
     jsonFile.readFile('data/tempList.json')
@@ -34,10 +34,17 @@ class DataStatistics {
       });
     this.updateTime = moment();
     this.lastSaveTime = moment();
+    // 针对 urlsMap 接口做一个特殊的计数
+    this.urlsMap = {};
     // 全部数据读取
     this.allData = {};
     fs.readdirSync(path.join(__dirname, '../data/record')).forEach((v) => {
       const key = v.replace(/\.json/, '');
+      // 内存中只记录15天数据
+      this.earlyCountDate = moment().subtract(15, 'days').format('YYYYMMDD');
+      if (key < this.earlyCountDate) {
+        return;
+      }
       jsonFile.readFile(`data/record/${v}`)
         .then((res) => {
           this.allData[key] = res;
@@ -49,10 +56,21 @@ class DataStatistics {
   saveInfo() {
     const lt = this.lastSaveTime.format('YYYYMMDD');
     const nt = this.updateTime.format('YYYYMMDD');
+    const now = moment().valueOf();
     if (lt !== nt) {
-      jsonFile.writeFile(`data/record/${lt}.json`, this.allData[lt] || {});
+      jsonFile.writeFile(`data/record/${lt}.json`, this.allData[lt] || []);
+      // 每天清一下 tempList
+      Object.keys(this.tempList).forEach(k => {
+        this.tempList[k] = this.tempList[k].filter((v) => v > (now - 3600000 * 6));
+        if (!this.tempList[k].length) {
+          delete this.tempList[k];
+        }
+      });
+
+      delete this.allData[this.earlyCountDate];
+      this.earlyCountDate = moment(this.earlyCountDate, 'YYYYMMDD').add(1, 'days').format('YYYYMMDD');
     }
-    jsonFile.writeFile(`data/record/${nt}.json`, this.allData[nt] || {});
+    jsonFile.writeFile(`data/record/${nt}.json`, this.allData[nt] || []);
     jsonFile.writeFile('data/tempList.json', this.tempList || {});
     this.lastSaveTime = moment();
   }
@@ -64,8 +82,9 @@ class DataStatistics {
     const os = agent.os;
     const ip = req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || req.connection.remoteAddres || req.socket.remoteAddress || '';
     const now = moment();
+    agent.browserVersion = `${agent.family} ${agent.major}.${agent.minor}.${agent.patch}`;
 
-    if (!this.ipCheck(ip)) {
+    if (!this.ipCheck(ip, req, agent)) {
       const t = this.getBlackTime(ip);
       return res.send({
         result: 400,
@@ -77,9 +96,15 @@ class DataStatistics {
     if (ip === '::ffff:127.0.0.1' || ip === '::1') {
       return next();
     }
+    if ({ okhttp: true }[agent.family] || { Other: true }[os.family] ) {
+      return res.send({
+        result: 400,
+        errMsg: `自己起一个 node 服务 这么难？？?`
+      })
+    }
     const data = {
       browser: agent.family,
-      browserVersion: `${agent.family} ${agent.major}.${agent.minor}.${agent.patch}`,
+      browserVersion: agent.browserVersion,
       os: os.family,
       osVersion: `${os.family} ${os.major}.${os.minor}.${os.patch}`,
       ip: ip,
@@ -87,6 +112,7 @@ class DataStatistics {
       url: req.url,
       host: req.headers.host,
       time: now.valueOf(),
+      D: now.format('DD'),
       H: now.format('HH'),
       m: now.format('mm'),
       Hm: now.format('HH:mm'),
@@ -102,12 +128,17 @@ class DataStatistics {
   }
 
   // 检查IP 是否可以继续调用
-  ipCheck(ip) {
+  ipCheck(ip, req, agent) {
     const now = this.updateTime.valueOf();
+    const ipArr = ip.split('.');
+    const preIp = `${ipArr[0]}.${ipArr[1]}`;
     if (this.whiteList[ip]) {
       return true;
     }
     if (this.blackList[ip] && (this.blackList[ip] > (now - 86400000))) {
+      return false;
+    }
+    if (agent.browserVersion === 'Firefox 49.0.0' && this.blackList[preIp] && (this.blackList[preIp] > (now - 86400000))) {
       return false;
     }
 
@@ -133,6 +164,26 @@ class DataStatistics {
       this.addList(ip, 'blackList');
       return false;
     }
+
+    // 如果一天内连续超过20次都是只请求 song/urls 接口
+    if (req.path === '/song/urls' && agent.browserVersion === 'Firefox 49.0.0') {
+      if (this.urlsMap[preIp] && this.urlsMap[preIp].time < (now - 86400000)) {
+        this.urlsMap[preIp] = undefined;
+      }
+      this.urlsMap[preIp] = this.urlsMap[preIp] || {
+        time: now,
+        count: 0,
+      };
+      this.urlsMap[preIp].count += 1;
+      if (this.urlsMap[preIp].count >= 10) {
+        this.addList(preIp, 'blackList', now + 86400000 * 2);
+        delete this.urlsMap[preIp];
+        return false;
+      }
+    } else {
+      delete this.urlsMap[preIp];
+    }
+    delete this.blackList[ip];
     return true;
   }
 
@@ -142,10 +193,11 @@ class DataStatistics {
   }
 
   // 加入 黑/白 名单
-  addList(ip, type) {
+  addList(ip, type, time) {
     const nType = type === 'whiteList' ? 'blackList' : 'whiteList';
-    this[type][ip] = this.updateTime.valueOf();
+    this[type][ip] = time || this.updateTime.valueOf();
     delete this[nType][ip];
+    delete this.tempList[ip];
     this.writeList();
   }
 

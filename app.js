@@ -6,10 +6,21 @@ const logger = require('morgan');
 const fs = require('fs');
 const DataStatistics = require('./util/dataStatistics');
 const jsonFile = require('jsonfile');
+const Feedback = require('./util/feedback');
+const Cache = require('./util/cache');
 
 const app = express();
 const dataHandle = new DataStatistics();
 global.dataStatistics = dataHandle;
+global.feedback = new Feedback();
+global.cache = new Cache();
+
+jsonFile.readFile('data/allCookies.json')
+  .then((res) => {
+    global.allCookies = res;
+  }, (err) => {
+    global.allCookies = {};
+  });
 
 jsonFile.readFile('data/cookie.json')
   .then((res) => {
@@ -36,13 +47,13 @@ app.use((req, res, next) => dataHandle.record(req, res, next));
 fs.readdirSync(path.join(__dirname, 'routes')).reverse().forEach(file => {
   const filename = file.replace(/\.js$/, '');
   app.use(`/${filename}`, (req, res, next) => {
-    global.cookies = req.cookies;
     global.response = res;
     global.req = req;
     req.query = {
       ...req.query,
       ...req.body,
     };
+    req.cookies.uin = (req.cookies.uin || '').replace(/\D/g, '');
     const callback = require(`./routes/${filename}`);
     callback(req, res, next);
   });

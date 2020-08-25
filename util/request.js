@@ -19,16 +19,16 @@ const request = async (obj, opts = {}) => {
       delete obj.data;
     }
 
-    const cookieObj = (Number(req.query.ownCookie) ? global.cookies : global.userCookie) || {};
+    const cookieObj = (Number(req.query.ownCookie) ? req.cookies : global.userCookie) || {};
     obj.headers = obj.headers || {};
     obj.xsrfCookieName = 'XSRF-TOKEN';
     obj.withCredentials = true;
-    obj.headers.Cookie = Object.keys(cookieObj).map((k) => `${k}=${cookieObj[k]}`).join('; ');
+    obj.headers.Cookie = Object.keys(cookieObj).map((k) => `${k}=${encodeURI(cookieObj[k])}`).join('; ');
 
     const res = await axios(obj);
 
     if (opts.dataType === 'xml') {
-      return handleXml(res.data);
+      return handleXml(res.data.replace(/(<!--)|(-->)/g, ''));
     }
 
     if (opts.dataType === 'raw') {
